@@ -25,7 +25,7 @@ var modelBuilders = map[string]interfaces.PredictionBuilder{
 	"ferr":  &services.FerrBuilder{},
 	"ldl":   &services.LdlBuilder{},
 	"tg":    &services.TgBuilder{},
-	"hdl":   &services.HdlBuilder{}, // для проверки отключения
+	"hdl":   &services.HdlBuilder{},
 }
 
 func PredictHandler(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +40,6 @@ func PredictHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Проверка на отключенную модель
 	if model == "hdl" {
 		http.Error(w, "Model 'hdl' is temporarily disabled", http.StatusServiceUnavailable)
 		return
@@ -53,7 +52,6 @@ func PredictHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Соберем JSON-данные из query-параметров
 	params := make(map[string]string)
 	for key, values := range r.URL.Query() {
 		if key == "model" {
@@ -68,42 +66,36 @@ func PredictHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Отдельная проверка для hdl — временно отключена
 	if model == "hdl" {
 		http.Error(w, "Model 'hdl' is temporarily disabled", http.StatusServiceUnavailable)
 		return
 	}
 
-	// Генерация payload-а
 	payload := builder.Build(params)
 
 	for key, values := range r.URL.Query() {
 		if key == "model" {
 			continue
 		}
-		payload[key] = values[0] // берём только первое значение
+		payload[key] = values[0]
 	}
 
-	// Преобразуем в JSON
 	jsonBytes, err := json.Marshal(payload)
 	if err != nil {
 		http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
 		return
 	}
 
-	// Подготовим POST-запрос
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonBytes))
 	if err != nil {
 		http.Error(w, "Failed to create request", http.StatusInternalServerError)
 		return
 	}
 
-	// Устанавливаем заголовки
 	req.Header.Set("Authorization", config.Cfg.AuthToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json; charset=utf-8")
 
-	// Отправляем
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -112,7 +104,6 @@ func PredictHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Читаем ответ
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		http.Error(w, "Failed to read response from external API", http.StatusInternalServerError)
@@ -121,20 +112,17 @@ func PredictHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if resp.StatusCode >= 400 {
-		// Логируем ошибку
+
 		logger.Log.Printf("External API returned error for model '%s': %s", model, string(body))
 
-		// Возвращаем ошибку клиенту
 		http.Error(w, "External API error: "+string(body), http.StatusBadGateway)
 		return
 	}
 
-	// Возвращаем клиенту ответ от стороннего API
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	w.Write(body)
 
-	// Логируем
 	logger.Log.Printf("Model: %s | Sent to: %s | Status: %d\n", model, endpoint, resp.StatusCode)
 
 }

@@ -6,7 +6,6 @@ import (
 	"strings"
 )
 
-// AuthMiddleware проверяет, есть ли нужный токен в заголовке Authorization
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("Authorization")
